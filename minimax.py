@@ -76,7 +76,7 @@ def simulate_move(state, snake_id, move):
     # --- At this point, the move is valid ---
 
     # Now create a new state with the move applied
-    new_state = copy.deepcopy(state)
+    new_state = copy_state(state)
     new_snake = next((s for s in new_state["board"]["snakes"] if s["id"] == snake_id), None)
 
     new_snake["body"].insert(0, new_head)
@@ -102,7 +102,7 @@ def get_valid_moves(state, snake_id):
 # Simulate multiple moves for all snakes
 # Return the new state after all moves
 def simulate_multiple_moves(state, move_set):
-    new_state = copy.deepcopy(state)
+    new_state = copy_state(state)
 
     # Apply all moves (record intended positions)
     heads = {}
@@ -165,7 +165,7 @@ def heuristic(state, my_snake_id):
     score += my_snake["health"]
     
     if my_snake["health"] == 100:
-        score += 50  # Bonus for being at max health
+        score += 30  # Bonus for eating food
 
     # Prefer being closer to food
     min_food_dist = float('inf')
@@ -174,7 +174,7 @@ def heuristic(state, my_snake_id):
         if dist < min_food_dist:
             min_food_dist = dist
     if min_food_dist < float('inf') :
-        score += max(0, 30 - min_food_dist)
+        score += max(0, 20 - min_food_dist)
    
 
     # Penalize being near other snake heads
@@ -182,16 +182,18 @@ def heuristic(state, my_snake_id):
         if other["id"] != my_snake_id:
             other_head = other["body"][0]
             dist = abs(head["x"] - other_head["x"]) + abs(head["y"] - other_head["y"])
-            if dist <= 2:
-                score -= 10  
-            if dist == 1 & len(other["body"]) >= len(my_snake["body"]):
+            if dist == 2 & len(other["body"]) >= len(my_snake["body"]):
+                score -= 20  
+            elif dist == 1 & len(other["body"]) >= len(my_snake["body"]):
                 score -= 1000 #Probably going to die
+            elif dist <=2 & len(other["body"]) < len(my_snake["body"]): # Bonus if you can kill
+                score += 10
     
     # Penalize going into a snake's body
     for other in state["board"]["snakes"]:
         for segment in other["body"]:
             dist = abs(head["x"] - segment["x"]) + abs(head["y"] - segment["y"])
-            if dist < 2:
+            if dist <= 2:
                 score -= 10   
 
     return score
@@ -201,7 +203,7 @@ def minimax(node, alpha, beta, depth, start_time, my_snake_id, time_limit=0.045,
     if time.time() - start_time > time_limit:
         return heuristic(node.state, my_snake_id), None
 
-    state_key = str(node.state) + str(node.current_snake_id) + str(node.depth) + str(node.maximizing)
+    state_key = hash_state(node.state, node.current_snake_id, node.depth, node.maximizing)
     if memo is not None and state_key in memo:
         return memo[state_key]
 
@@ -238,6 +240,7 @@ def minimax(node, alpha, beta, depth, start_time, my_snake_id, time_limit=0.045,
 
     return result
 
+# Main function to choose the best move
 def choose_best_move(root, my_snake_id, time_limit=0.15):
     import time
     start_time = time.time()
@@ -269,3 +272,20 @@ def choose_best_move(root, my_snake_id, time_limit=0.15):
 
     return best_move, depth - 1  # Return depth-1 as the last completed depth
 
+# Hashing function for memoization
+def hash_state(state, current_snake_id, depth, maximizing):
+    snake_tuples = tuple((s['id'], tuple((seg['x'], seg['y']) for seg in s['body']), s['health']) for s in state['board']['snakes'])
+    food_tuples = tuple((f['x'], f['y']) for f in state['board']['food'])
+    return (snake_tuples, food_tuples, current_snake_id, depth, maximizing)
+
+# Copy the state of the game (to avoid deep copying)
+def copy_state(state):
+    new_snakes = [dict(snake, body=snake["body"][:]) for snake in state["board"]["snakes"]]
+    return {
+        "board": {
+            "width": state["board"]["width"],
+            "height": state["board"]["height"],
+            "food": list(state["board"]["food"]),
+            "snakes": new_snakes
+        }
+    }
