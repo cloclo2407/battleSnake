@@ -10,7 +10,7 @@ MOVE_DELTAS = {
     "right": (1, 0),
 }
 
-
+#Node class for Minimax
 class BattleSnakeNode:
     def __init__(self, state, current_snake_id, depth, maximizing):
         self.state = state
@@ -18,54 +18,139 @@ class BattleSnakeNode:
         self.depth = depth
         self.maximizing = maximizing
 
+    # If maximizing, generate all possible moves for the snake
+    # If minimizing, generate some random moves for the opponent snakes among possible ones
     def get_children(self):
         children = []
-        for move in DIRECTIONS:
-            new_state = simulate_move(self.state, self.current_snake_id, move)
-            if new_state:
-                child = BattleSnakeNode(new_state, self.current_snake_id, self.depth - 1, not self.maximizing)
-                children.append((move, child))
+
+        if self.maximizing:
+            # Your snake's turn: explore all moves
+            for move in DIRECTIONS:
+                new_state = simulate_move(self.state, self.current_snake_id, move) #Check if the move is valid
+                if new_state:
+                    child = BattleSnakeNode(new_state, self.current_snake_id, self.depth - 1, False)
+                    children.append((move, child))
+        else:
+            # Opponent snakes' turn: treat them as one opponent player
+            # Generate random moves for opponent snakes to reduce branching factor
+            opponent_ids = [s["id"] for s in self.state["board"]["snakes"] if s["id"] != self.current_snake_id]
+            for _ in range(3):  # Generate 3 random combinations of opponent moves
+                move_set = {}
+                for oid in opponent_ids:
+                    valid_moves = get_valid_moves(self.state, oid) # Get valid moves for the opponent snake
+                    if valid_moves:
+                        move_set[oid] = random.choice(valid_moves)
+                    else: 
+                        move_set[oid] = random.choice(DIRECTIONS)  # If no valid moves, pick a random one
+
+                new_state = simulate_multiple_moves(self.state, move_set) # New state with all opponent moves
+                if new_state:
+                    child = BattleSnakeNode(new_state, self.current_snake_id, self.depth - 1, True)
+                    children.append((None, child))  # Move is not relevant for opponents
+
         return children
 
-
+# Check if the move is valid
+# A move is valid if it doesn't lead to a wall or a snake body
+# Simulate the move and return the new state
+# If the move is invalid, return None
 def simulate_move(state, snake_id, move):
-    new_state = copy.deepcopy(state)
-    snakes = new_state["board"]["snakes"]
-    snake = next((s for s in snakes if s["id"] == snake_id), None)
-
+    # Find the snake to move
+    snake = next((s for s in state["board"]["snakes"] if s["id"] == snake_id), None)
     if not snake or not snake["health"] > 0:
-        return None  # Snake is dead
+        return None  # Snake is dead or missing
 
     dx, dy = MOVE_DELTAS[move]
     head = snake["body"][0]
     new_head = {"x": head["x"] + dx, "y": head["y"] + dy}
 
-    # Check wall collision
+    # Check wall bounds
     if not (0 <= new_head["x"] < state["board"]["width"] and 0 <= new_head["y"] < state["board"]["height"]):
         return None
 
-    # Check self collision or with any other snake body
-    for s in new_state["board"]["snakes"]:
+    # Check collision with snake bodies
+    for s in state["board"]["snakes"]:
         if new_head in s["body"]:
             return None
 
-    # Update snake body
-    snake["body"].insert(0, new_head)
+    # --- At this point, the move is valid ---
+
+    # Now create a new state with the move applied
+    new_state = copy.deepcopy(state)
+    new_snake = next((s for s in new_state["board"]["snakes"] if s["id"] == snake_id), None)
+
+    new_snake["body"].insert(0, new_head)
 
     if new_head in new_state["board"]["food"]:
         new_state["board"]["food"].remove(new_head)
-        snake["health"] = 100  # Ate food
+        new_snake["health"] = 100
     else:
-        snake["body"].pop()  # Move forward without growing
-        snake["health"] -= 1  # Lose health
+        new_snake["body"].pop()
+        new_snake["health"] -= 1
 
     return new_state
 
+# Get valid moves for a snake
+# A move is valid if it doesn't lead to a wall or a snake body
+def get_valid_moves(state, snake_id):
+    valid = []
+    for move in DIRECTIONS:
+        if simulate_move(state, snake_id, move):
+            valid.append(move)
+    return valid
+
+# Simulate multiple moves for all snakes
+# Return the new state after all moves
+def simulate_multiple_moves(state, move_set):
+    new_state = copy.deepcopy(state)
+
+    # Apply all moves (record intended positions)
+    heads = {}
+    for snake in new_state["board"]["snakes"]:
+        if snake["id"] not in move_set:
+            continue
+        move = move_set[snake["id"]]
+        dx, dy = MOVE_DELTAS[move]
+        head = snake["body"][0]
+        new_head = {"x": head["x"] + dx, "y": head["y"] + dy}
+        heads[snake["id"]] = new_head
+
+    # Collision detection
+    board_width = new_state["board"]["width"]
+    board_height = new_state["board"]["height"]
+    occupied = {tuple(segment.values()) for s in new_state["board"]["snakes"] for segment in s["body"]}
+
+    for snake in new_state["board"]["snakes"]:
+        if snake["id"] not in heads:
+            continue
+        new_head = heads[snake["id"]]
+
+        # Update body
+        snake["body"].insert(0, new_head)
+        if new_head in new_state["board"]["food"]:
+            new_state["board"]["food"].remove(new_head)
+            snake["health"] = 100
+        else:
+            snake["body"].pop()
+            snake["health"] -= 1
+            
+        # Wall or body collision
+        if not (0 <= new_head["x"] < board_width and 0 <= new_head["y"] < board_height):
+            snake["health"] = 0  # Mark as dead
+            continue
+        if tuple(new_head.values()) in occupied:
+            snake["health"] = 0
+            continue
+
+    # Remove dead snakes
+    new_state["board"]["snakes"] = [s for s in new_state["board"]["snakes"] if s["health"] > 0]
+
+    return new_state
 
 def heuristic(state, my_snake_id):
     my_snake = next((s for s in state["board"]["snakes"] if s["id"] == my_snake_id), None)
     if not my_snake:
-        return -9999  # You're dead
+        return -1000  # You're dead
 
     score = 0
     head = my_snake["body"][0]
@@ -89,7 +174,7 @@ def heuristic(state, my_snake_id):
         if dist < min_food_dist:
             min_food_dist = dist
     if min_food_dist < float('inf') :
-        score += max(0, 20 - min_food_dist)
+        score += max(0, 30 - min_food_dist)
    
 
     # Penalize being near other snake heads
@@ -99,6 +184,8 @@ def heuristic(state, my_snake_id):
             dist = abs(head["x"] - other_head["x"]) + abs(head["y"] - other_head["y"])
             if dist <= 2:
                 score -= 10  
+            if dist == 1 & len(other["body"]) >= len(my_snake["body"]):
+                score -= 1000 #Probably going to die
     
     # Penalize going into a snake's body
     for other in state["board"]["snakes"]:
@@ -109,7 +196,7 @@ def heuristic(state, my_snake_id):
 
     return score
 
-
+# Classical Minimax algorithm with alpha-beta pruning for two players
 def minimax(node, alpha, beta, depth, start_time, my_snake_id, time_limit=0.045, memo=None):
     if time.time() - start_time > time_limit:
         return heuristic(node.state, my_snake_id), None
@@ -150,7 +237,6 @@ def minimax(node, alpha, beta, depth, start_time, my_snake_id, time_limit=0.045,
         memo[state_key] = result
 
     return result
-
 
 def choose_best_move(root, my_snake_id, time_limit=0.15):
     import time
