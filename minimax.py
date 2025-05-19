@@ -25,29 +25,27 @@ class BattleSnakeNode:
     # If maximizing, generate all possible moves for the snake 
     # If minimizing, generate some random moves for the opponent snakes among possible ones if two snakes or more,
     #                if only one opponent generates all its possible moves
-    def get_children(self):
+    def get_children(self, start_time=None, time_limit=None):
         children = []
 
         if self.maximizing:
-            # Your snake's turn: explore all possible moves
             for move in DIRECTIONS:
+                if time_limit and time.time() - start_time > time_limit:
+                    break
                 new_state = simulate_move(self.state, self.current_snake_id, move)
                 if new_state:
                     child = BattleSnakeNode(new_state, self.current_snake_id, self.depth - 1, False)
                     children.append((move, child))
         else:
-            # Opponent snakes' turn
             opponent_ids = [s["id"] for s in self.state["board"]["snakes"] if s["id"] != self.current_snake_id]
-
-            # Gather valid moves for each opponent
             opponent_moves = {}
             move_counts = []
+
             for oid in opponent_ids:
                 valid_moves = get_valid_moves(self.state, oid)
                 if valid_moves:
                     opponent_moves[oid] = valid_moves
                 else:
-                    # Assign a single random move to avoid increasing branching factor
                     opponent_moves[oid] = [random.choice(DIRECTIONS)]
                 move_counts.append(len(opponent_moves[oid]))
 
@@ -56,17 +54,19 @@ class BattleSnakeNode:
                 total_combinations *= count
 
             if total_combinations <= 6:
-                # Explore all combinations
                 all_move_sets = list(product(*[opponent_moves[oid] for oid in opponent_ids]))
                 for moves in all_move_sets:
+                    if time_limit and time.time() - start_time > time_limit:
+                        break
                     move_set = {oid: move for oid, move in zip(opponent_ids, moves)}
                     new_state = simulate_multiple_moves(self.state, move_set)
                     if new_state:
                         child = BattleSnakeNode(new_state, self.current_snake_id, self.depth - 1, True)
                         children.append((None, child))
             else:
-                # Random sampling
                 for _ in range(3):
+                    if time_limit and time.time() - start_time > time_limit:
+                        break
                     move_set = {}
                     for oid in opponent_ids:
                         move_set[oid] = random.choice(opponent_moves[oid])
@@ -76,6 +76,7 @@ class BattleSnakeNode:
                         children.append((None, child))
 
         return children
+
 
 # Check if the move is valid
 # A move is valid if it doesn't lead to a wall or a snake body
@@ -301,11 +302,11 @@ def minimax(node,
             my_snake_id,
             time_limit=0.045,
             memo=None):
+    
     if time.time() - start_time > time_limit:
         return heuristic(node.state, my_snake_id), None
 
-    state_key = hash_state(node.state, node.current_snake_id, node.depth,
-                           node.maximizing)
+    state_key = hash_state(node.state, node.current_snake_id, node.depth, node.maximizing)
     if memo is not None and state_key in memo:
         return memo[state_key]
 
@@ -316,7 +317,9 @@ def minimax(node,
 
     if node.maximizing:
         max_eval = float('-inf')
-        for move, child in node.get_children():
+        for move, child in node.get_children(start_time, time_limit):  # ← Pass timing info
+            if time.time() - start_time > time_limit:
+                break
             eval, _ = minimax(child, alpha, beta, depth - 1, start_time, my_snake_id, time_limit, memo)
             if eval > max_eval:
                 max_eval = eval
@@ -327,7 +330,9 @@ def minimax(node,
         result = (max_eval, best_move)
     else:
         min_eval = float('inf')
-        for move, child in node.get_children():
+        for move, child in node.get_children(start_time, time_limit):  # ← Pass timing info
+            if time.time() - start_time > time_limit:
+                break
             eval, _ = minimax(child, alpha, beta, depth - 1, start_time, my_snake_id, time_limit, memo)
             if eval < min_eval:
                 min_eval = eval
@@ -341,6 +346,7 @@ def minimax(node,
         memo[state_key] = result
 
     return result
+
 
 # Main function to choose the best move
 def choose_best_move(root, my_snake_id, time_limit=0.15):
