@@ -21,38 +21,50 @@ class BattleSnakeNode:
         self.depth = depth
         self.maximizing = maximizing
 
-    # If maximizing, generate all possible moves for the snake
-    # If minimizing, generate some random moves for the opponent snakes among possible ones
+    # If maximizing, generate all possible moves for the snake 
+    # If minimizing, generate some random moves for the opponent snakes among possible ones if two snakes or more,
+    #                if only one opponent generates all its possible moves
     def get_children(self):
         children = []
 
         if self.maximizing:
-            # Your snake's turn: explore all moves
+            # Your snake's turn: explore all possible moves
             for move in DIRECTIONS:
-                new_state = simulate_move(self.state, self.current_snake_id, move) #Check if the move is valid
+                new_state = simulate_move(self.state, self.current_snake_id, move)
                 if new_state:
                     child = BattleSnakeNode(new_state, self.current_snake_id, self.depth - 1, False)
                     children.append((move, child))
         else:
-            # Opponent snakes' turn: treat them as one opponent player
-            # Generate random moves for opponent snakes to reduce branching factor
+            # Opponent snakes' turn
             opponent_ids = [s["id"] for s in self.state["board"]["snakes"] if s["id"] != self.current_snake_id]
-            for oid in opponent_ids:
-                    valid_moves = get_valid_moves(self.state, oid) # Get valid moves for the opponent snake
-            for _ in range(3):  # Generate 3 random combinations of opponent moves
-                move_set = {}
-                for oid in opponent_ids:
-                    if valid_moves:
-                        move_set[oid] = random.choice(valid_moves)
-                    else: 
-                        move_set[oid] = random.choice(DIRECTIONS)  # If no valid moves, pick a random one
 
-                new_state = simulate_multiple_moves(self.state, move_set) # New state with all opponent moves
-                if new_state:
-                    child = BattleSnakeNode(new_state, self.current_snake_id, self.depth - 1, True)
-                    children.append((None, child))  # Move is not relevant for opponents
+            if len(opponent_ids) == 1:
+                # Only one opponent: explore all their possible moves
+                oid = opponent_ids[0]
+                valid_moves = get_valid_moves(self.state, oid)
+                for move in valid_moves:
+                    move_set = {oid: move}
+                    new_state = simulate_multiple_moves(self.state, move_set)
+                    if new_state:
+                        child = BattleSnakeNode(new_state, self.current_snake_id, self.depth - 1, True)
+                        children.append((None, child))  # Move not tracked for opponents
+            else:
+                # Multiple opponents: generate random combinations to reduce branching
+                for _ in range(3):  # Number of random samples
+                    move_set = {}
+                    for oid in opponent_ids:
+                        valid_moves = get_valid_moves(self.state, oid)
+                        if valid_moves:
+                            move_set[oid] = random.choice(valid_moves)
+                        else:
+                            move_set[oid] = random.choice(DIRECTIONS)  # Fallback
+                    new_state = simulate_multiple_moves(self.state, move_set)
+                    if new_state:
+                        child = BattleSnakeNode(new_state, self.current_snake_id, self.depth - 1, True)
+                        children.append((None, child))
 
         return children
+
 
 # Check if the move is valid
 # A move is valid if it doesn't lead to a wall or a snake body
