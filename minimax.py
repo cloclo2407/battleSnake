@@ -1,17 +1,20 @@
 import copy
 import time
 import random
+from collections import deque
 
 DIRECTIONS = ["up", "down", "left", "right"]
 MOVE_DELTAS = {
-    "up":    (0, 1),
-    "down":  (0, -1),
-    "left":  (-1, 0),
+    "up": (0, 1),
+    "down": (0, -1),
+    "left": (-1, 0),
     "right": (1, 0),
 }
 
+
 #Node class for Minimax
 class BattleSnakeNode:
+
     def __init__(self, state, current_snake_id, depth, maximizing):
         self.state = state
         self.current_snake_id = current_snake_id
@@ -34,10 +37,11 @@ class BattleSnakeNode:
             # Opponent snakes' turn: treat them as one opponent player
             # Generate random moves for opponent snakes to reduce branching factor
             opponent_ids = [s["id"] for s in self.state["board"]["snakes"] if s["id"] != self.current_snake_id]
+            for oid in opponent_ids:
+                    valid_moves = get_valid_moves(self.state, oid) # Get valid moves for the opponent snake
             for _ in range(3):  # Generate 3 random combinations of opponent moves
                 move_set = {}
                 for oid in opponent_ids:
-                    valid_moves = get_valid_moves(self.state, oid) # Get valid moves for the opponent snake
                     if valid_moves:
                         move_set[oid] = random.choice(valid_moves)
                     else: 
@@ -159,11 +163,16 @@ def heuristic(state, my_snake_id):
     score += 100
 
     # Favor longer length
-    score += len(my_snake["body"]) * 2
+    score += len(my_snake["body"]) * 3
 
     # Favor high health
     score += my_snake["health"]
-    
+
+    space = flood_fill(state, my_snake)
+    score += space * 2
+    if space < 7:
+        score -= 200  # Penalize tight spaces
+
     if my_snake["health"] == 100:
         score += 30  # Bonus for eating food
 
@@ -173,37 +182,107 @@ def heuristic(state, my_snake_id):
         dist = abs(food["x"] - head["x"]) + abs(food["y"] - head["y"])
         if dist < min_food_dist:
             min_food_dist = dist
-    if min_food_dist < float('inf') :
+
+    if min_food_dist < float('inf'):
         score += max(0, 20 - min_food_dist)
-   
 
     # Penalize being near other snake heads
     for other in state["board"]["snakes"]:
         if other["id"] != my_snake_id:
             other_head = other["body"][0]
-            dist = abs(head["x"] - other_head["x"]) + abs(head["y"] - other_head["y"])
-            if dist == 2 & len(other["body"]) >= len(my_snake["body"]):
-                score -= 20  
-            elif dist == 1 & len(other["body"]) >= len(my_snake["body"]):
-                score -= 1000 #Probably going to die
-            elif dist <=2 & len(other["body"]) < len(my_snake["body"]): # Bonus if you can kill
-                score += 10
-    
+            dist = abs(head["x"] - other_head["x"]) + abs(head["y"] -
+                                                          other_head["y"])
+            if dist == 2 and len(other["body"]) >= len(my_snake["body"]):
+                score -= 50
+            elif dist == 1 and len(other["body"]) >= len(my_snake["body"]):
+                score -= 1000  #Probably going to die
+            elif dist <= 2 and len(other["body"]) < len(
+                    my_snake["body"]):  # Bonus if you can kill
+                score += 100
+
     # Penalize going into a snake's body
     for other in state["board"]["snakes"]:
         for segment in other["body"]:
-            dist = abs(head["x"] - segment["x"]) + abs(head["y"] - segment["y"])
+            dist = abs(head["x"] - segment["x"]) + abs(head["y"] -
+                                                       segment["y"])
             if dist <= 2:
-                score -= 10   
+                score -= 100
+
+    # Go towards tail 
+    my_tail = my_snake["body"][-1]
+    tail_dist = abs(head["x"] - my_tail["x"]) + abs(head["y"] - my_tail["y"])
+    if tail_dist <= 3:
+        score += 30
 
     return score
 
+
+def flood_fill(state, my_snake):
+    width = state['board']['width']
+    height = state['board']['height']
+
+    # Initialize grid: 0 = free, 1 = blocked
+    grid = [[0 for _ in range(width)] for _ in range(height)]
+    for snake in state['board']['snakes']:
+        for body in snake['body']:
+            grid[body['y']][body['x']] = 1
+
+    # Directions mapped to (dx, dy)
+    directions = {
+        "up": (0, 1),
+        "down": (0, -1),
+        "left": (-1, 0),
+        "right": (1, 0)
+    }
+
+    head_x = my_snake['body'][0]['x']
+    head_y = my_snake['body'][0]['y']
+
+    start_x, start_y = head_x, head_y
+
+    grid[head_y][head_x] = 0
+
+    # Check bounds and collisions
+    if not (0 <= start_x < width and 0 <= start_y < height):
+        return 0
+    if grid[start_y][start_x] == 1:
+        return 0
+
+    flooded_grid = [row[:] for row in grid]
+    queue = deque()
+    open_space_count = 0
+
+    queue.append((start_x, start_y))
+    while queue:
+        x, y = queue.popleft()
+        if not (0 <= x < width and 0 <= y < height):
+            continue
+        if flooded_grid[y][x] != 0:
+            continue
+
+        open_space_count += 1
+        flooded_grid[y][x] = -1  # mark visited
+
+        for dx, dy in directions.values():
+            queue.append((x + dx, y + dy))
+
+    return open_space_count
+
+
 # Classical Minimax algorithm with alpha-beta pruning for two players
-def minimax(node, alpha, beta, depth, start_time, my_snake_id, time_limit=0.045, memo=None):
+def minimax(node,
+            alpha,
+            beta,
+            depth,
+            start_time,
+            my_snake_id,
+            time_limit=0.045,
+            memo=None):
     if time.time() - start_time > time_limit:
         return heuristic(node.state, my_snake_id), None
 
-    state_key = hash_state(node.state, node.current_snake_id, node.depth, node.maximizing)
+    state_key = hash_state(node.state, node.current_snake_id, node.depth,
+                           node.maximizing)
     if memo is not None and state_key in memo:
         return memo[state_key]
 
@@ -254,16 +333,14 @@ def choose_best_move(root, my_snake_id, time_limit=0.15):
         if elapsed >= time_limit:
             break
 
-        score, move = minimax(
-            root,
-            alpha=float('-inf'),
-            beta=float('inf'),
-            depth=depth,
-            start_time=start_time,
-            my_snake_id=my_snake_id,
-            time_limit=time_limit,
-            memo=best_move_table
-        )
+        score, move = minimax(root,
+                              alpha=float('-inf'),
+                              beta=float('inf'),
+                              depth=depth,
+                              start_time=start_time,
+                              my_snake_id=my_snake_id,
+                              time_limit=time_limit,
+                              memo=best_move_table)
 
         if move is not None:
             best_move = move
@@ -272,15 +349,23 @@ def choose_best_move(root, my_snake_id, time_limit=0.15):
 
     return best_move, depth - 1  # Return depth-1 as the last completed depth
 
+
 # Hashing function for memoization
 def hash_state(state, current_snake_id, depth, maximizing):
-    snake_tuples = tuple((s['id'], tuple((seg['x'], seg['y']) for seg in s['body']), s['health']) for s in state['board']['snakes'])
+    snake_tuples = tuple(
+        (s['id'], tuple((seg['x'], seg['y'])
+                        for seg in s['body']), s['health'])
+        for s in state['board']['snakes'])
     food_tuples = tuple((f['x'], f['y']) for f in state['board']['food'])
     return (snake_tuples, food_tuples, current_snake_id, depth, maximizing)
 
+
 # Copy the state of the game (to avoid deep copying)
 def copy_state(state):
-    new_snakes = [dict(snake, body=snake["body"][:]) for snake in state["board"]["snakes"]]
+    new_snakes = [
+        dict(snake, body=snake["body"][:])
+        for snake in state["board"]["snakes"]
+    ]
     return {
         "board": {
             "width": state["board"]["width"],
