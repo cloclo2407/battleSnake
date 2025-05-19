@@ -188,12 +188,15 @@ def heuristic(state, my_snake_id):
     score += 100
 
     # Favor longer length
-    score += len(my_snake["body"]) * 2
+    score += len(my_snake["body"]) * 3
 
     # Favor high health
     score += my_snake["health"]
 
-    score += flood_fill(state, my_snake)
+    space = flood_fill(state, my_snake)
+    score += space * 2
+    if space < 7:
+        score -= 200  # Penalize tight spaces
 
     if my_snake["health"] == 100:
         score += 30  # Bonus for eating food
@@ -204,6 +207,7 @@ def heuristic(state, my_snake_id):
         dist = abs(food["x"] - head["x"]) + abs(food["y"] - head["y"])
         if dist < min_food_dist:
             min_food_dist = dist
+
     if min_food_dist < float('inf'):
         score += max(0, 20 - min_food_dist)
 
@@ -213,13 +217,13 @@ def heuristic(state, my_snake_id):
             other_head = other["body"][0]
             dist = abs(head["x"] - other_head["x"]) + abs(head["y"] -
                                                           other_head["y"])
-            if dist == 2 & len(other["body"]) >= len(my_snake["body"]):
-                score -= 20
-            elif dist == 1 & len(other["body"]) >= len(my_snake["body"]):
+            if dist == 2 and len(other["body"]) >= len(my_snake["body"]):
+                score -= 50
+            elif dist == 1 and len(other["body"]) >= len(my_snake["body"]):
                 score -= 1000  #Probably going to die
-            elif dist <= 2 & len(other["body"]) < len(
+            elif dist <= 2 and len(other["body"]) < len(
                     my_snake["body"]):  # Bonus if you can kill
-                score += 10
+                score += 100
 
     # Penalize going into a snake's body
     for other in state["board"]["snakes"]:
@@ -227,7 +231,13 @@ def heuristic(state, my_snake_id):
             dist = abs(head["x"] - segment["x"]) + abs(head["y"] -
                                                        segment["y"])
             if dist <= 2:
-                score -= 10
+                score -= 100
+
+    # Go towards tail 
+    my_tail = my_snake["body"][-1]
+    tail_dist = abs(head["x"] - my_tail["x"]) + abs(head["y"] - my_tail["y"])
+    if tail_dist <= 3:
+        score += 30
 
     return score
 
@@ -281,7 +291,6 @@ def flood_fill(state, my_snake):
         for dx, dy in directions.values():
             queue.append((x + dx, y + dy))
 
-    print("open_space" + str(open_space_count))
     return open_space_count
 
 
