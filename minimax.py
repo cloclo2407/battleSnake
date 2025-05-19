@@ -2,6 +2,7 @@ import copy
 import time
 import random
 from collections import deque
+from itertools import product
 
 DIRECTIONS = ["up", "down", "left", "right"]
 MOVE_DELTAS = {
@@ -38,33 +39,43 @@ class BattleSnakeNode:
             # Opponent snakes' turn
             opponent_ids = [s["id"] for s in self.state["board"]["snakes"] if s["id"] != self.current_snake_id]
 
-            if len(opponent_ids) == 1:
-                # Only one opponent: explore all their possible moves
-                oid = opponent_ids[0]
+            # Gather valid moves for each opponent
+            opponent_moves = {}
+            move_counts = []
+            for oid in opponent_ids:
                 valid_moves = get_valid_moves(self.state, oid)
-                for move in valid_moves:
-                    move_set = {oid: move}
+                if valid_moves:
+                    opponent_moves[oid] = valid_moves
+                else:
+                    # Assign a single random move to avoid increasing branching factor
+                    opponent_moves[oid] = [random.choice(DIRECTIONS)]
+                move_counts.append(len(opponent_moves[oid]))
+
+            total_combinations = 1
+            for count in move_counts:
+                total_combinations *= count
+
+            if total_combinations <= 6:
+                # Explore all combinations
+                all_move_sets = list(product(*[opponent_moves[oid] for oid in opponent_ids]))
+                for moves in all_move_sets:
+                    move_set = {oid: move for oid, move in zip(opponent_ids, moves)}
                     new_state = simulate_multiple_moves(self.state, move_set)
                     if new_state:
                         child = BattleSnakeNode(new_state, self.current_snake_id, self.depth - 1, True)
-                        children.append((None, child))  # Move not tracked for opponents
+                        children.append((None, child))
             else:
-                # Multiple opponents: generate random combinations to reduce branching
-                for _ in range(3):  # Number of random samples
+                # Random sampling
+                for _ in range(3):
                     move_set = {}
                     for oid in opponent_ids:
-                        valid_moves = get_valid_moves(self.state, oid)
-                        if valid_moves:
-                            move_set[oid] = random.choice(valid_moves)
-                        else:
-                            move_set[oid] = random.choice(DIRECTIONS)  # Fallback
+                        move_set[oid] = random.choice(opponent_moves[oid])
                     new_state = simulate_multiple_moves(self.state, move_set)
                     if new_state:
                         child = BattleSnakeNode(new_state, self.current_snake_id, self.depth - 1, True)
                         children.append((None, child))
 
         return children
-
 
 # Check if the move is valid
 # A move is valid if it doesn't lead to a wall or a snake body
