@@ -44,7 +44,7 @@ def end(game_state: typing.Dict):
 # Valid moves are "up", "down", "left", or "right"
 # See https://docs.battlesnake.com/api/example-move for available data
 def move(game_state: typing.Dict) -> typing.Dict:
-
+    start_time = time.time()
     my_snake_id = game_state["you"]["id"]
     root = BattleSnakeNode(game_state, my_snake_id, depth=0, maximizing=True)
 
@@ -52,7 +52,8 @@ def move(game_state: typing.Dict) -> typing.Dict:
 
     if best_move is None:
         best_move = random.choice(["up", "down", "left", "right"])
-        
+    end_time = time.time()
+    print(f"Time: {end_time-start_time}")
     print(f"Max Depth Reached: {max_depth}")
     print(f"MOVE {game_state['turn']} ({my_snake_id}): {best_move}")
     return {"move": best_move}

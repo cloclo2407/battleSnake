@@ -170,11 +170,11 @@ def heuristic(state, my_snake_id):
 
     space = flood_fill(state, my_snake)
     score += space * 2
-    if space < 7:
+    if space < len(my_snake["body"]):
         score -= 200  # Penalize tight spaces
 
     if my_snake["health"] == 100:
-        score += 30  # Bonus for eating food
+        score += 80  # Bonus for eating food
 
     # Prefer being closer to food
     min_food_dist = float('inf')
@@ -193,8 +193,8 @@ def heuristic(state, my_snake_id):
             dist = abs(head["x"] - other_head["x"]) + abs(head["y"] -
                                                           other_head["y"])
             if dist == 2 and len(other["body"]) >= len(my_snake["body"]):
-                score -= 50
-            elif dist == 1 and len(other["body"]) >= len(my_snake["body"]):
+                score -= 100
+            elif dist <= 1 and len(other["body"]) >= len(my_snake["body"]):
                 score -= 1000  #Probably going to die
             elif dist <= 2 and len(other["body"]) < len(
                     my_snake["body"]):  # Bonus if you can kill
@@ -212,7 +212,7 @@ def heuristic(state, my_snake_id):
     my_tail = my_snake["body"][-1]
     tail_dist = abs(head["x"] - my_tail["x"]) + abs(head["y"] - my_tail["y"])
     if tail_dist <= 3:
-        score += 30
+        score += 10
 
     return score
 
@@ -320,7 +320,7 @@ def minimax(node,
     return result
 
 # Main function to choose the best move
-def choose_best_move(root, my_snake_id, time_limit=0.15):
+def choose_best_move(root, my_snake_id, time_limit=0.35):
     import time
     start_time = time.time()
     depth = 1
