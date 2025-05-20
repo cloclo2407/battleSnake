@@ -15,6 +15,7 @@ import typing
 from minimax import BattleSnakeNode, choose_best_move
 import time
 
+
 # info is called when you create your Battlesnake on play.battlesnake.com
 # and controls your Battlesnake's appearance
 # TIP: If you open your Battlesnake URL in a browser you should see this data
@@ -53,8 +54,8 @@ def move(game_state: typing.Dict) -> typing.Dict:
     if best_move is None:
         best_move = random.choice(["up", "down", "left", "right"])
     end_time = time.time()
-    print(f"Time: {max_depth}")
-    print(f"Max Depth Reached: {end_time-start_time}")
+    print(f"Time: {end_time-start_time}")
+    print(f"Max Depth Reached: {max_depth}")
     print(f"MOVE {game_state['turn']} ({my_snake_id}): {best_move}")
     return {"move": best_move}
 
