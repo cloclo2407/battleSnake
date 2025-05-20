@@ -173,8 +173,8 @@ def heuristic(state, my_snake_id):
     if space < len(my_snake["body"]):
         score -= 200  # Penalize tight spaces
 
-    if my_snake["health"] == 100:
-        score += 80  # Bonus for eating food
+    if my_snake["health"] >= 98:
+        score += 100  # Bonus for eating food
 
     # Prefer being closer to food
     min_food_dist = float('inf')
@@ -193,7 +193,7 @@ def heuristic(state, my_snake_id):
             dist = abs(head["x"] - other_head["x"]) + abs(head["y"] -
                                                           other_head["y"])
             if dist == 2 and len(other["body"]) >= len(my_snake["body"]):
-                score -= 100
+                score -= 150
             elif dist <= 1 and len(other["body"]) >= len(my_snake["body"]):
                 score -= 1000  #Probably going to die
             elif dist <= 2 and len(other["body"]) < len(
